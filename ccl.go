@@ -92,6 +92,7 @@ func (cmd *Command) bind(nodes []Node) (*Invocation, error) {
 			}
 
 			var value any
+			var err error
 
 			if len(n.Values) == 0 {
 				// booleans can be represented by flag itself, that means it is a true value
@@ -104,36 +105,32 @@ func (cmd *Command) bind(nodes []Node) (*Invocation, error) {
 					inv.Flags[flag.GetName()] = flag
 					continue
 				} else {
+					// if no values provided & default value provided use it skip to update and register the flag
 					value = flag.GetValue()
 				}
-			}
-
-			// make sure to use default value in case there is no provided value(s)
-
-			raw := n.Values[0]
-
-			value, err := flag.ParseValue(raw)
-			if err != nil {
-				return nil, &CliError{
-					Name:       flag.GetName(),
-					Kind:       ErrorFlagValueIncorrectType,
-					Value:      raw,
-					ActualType: flag.Type(),
-					ValueType:  fmt.Sprintf("%T", raw),
+			} else {
+				value, err = flag.ParseValue(n.Values[0])
+				if err != nil {
+					return nil, &CliError{
+						Name:       flag.GetName(),
+						Kind:       ErrorFlagValueIncorrectType,
+						Value:      n.Values[0],
+						ActualType: flag.Type(),
+						ValueType:  fmt.Sprintf("%T", n.Values[0]),
+					}
 				}
 			}
 
-			// handle the case to set the value
 			flag.SetValue(value)
 			inv.Flags[flag.GetName()] = flag
 
 		case *ArgumentNode:
-			// don't search for the arg name cause it ain't provided, just the name is provided
-			// so the better way to get the positional arg here, is to go with the slice order and get the arg by the idx
 			if len(cmd.Args) == 0 {
 				continue
 			}
 
+			// don't search for the arg name cause it ain't provided, just the name is provided
+			// so the better way to get the positional arg here, is to go with the slice order and get the arg by the idx
 			arg := cmd.Args[iter]
 			if arg == nil {
 				return nil, &CliError{
@@ -405,7 +402,7 @@ func (cmd *Command) Run(osArgs []string) error {
 	nodes := p.Parse()
 
 	// checks if the current arg is a sub command
-	if len(cmd.Commands) > 0 && len(osArgs) > 1 && len(nodes) > 0 {
+	if isParentCommand && len(osArgs) > 1 && len(nodes) > 0 {
 		if _, ok := nodes[0].(*ArgumentNode); ok {
 			subCmd := cmd.findSubCommand(osArgs[1])
 			if subCmd == nil {
